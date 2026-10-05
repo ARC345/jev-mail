@@ -33,8 +33,10 @@ export async function diagnose(options: Options) {
   try {
     const config = parseConfigYaml(await fs.readFile(configPath, 'utf8'));
     configValid = true; add('config', 'pass', 'CONFIG_VALID', 'Local YAML is valid.');
-    add('provider', 'pass', 'SYSTEM_ONE_PROVIDER', config.provider?.baseUrl
-      ? 'Using a custom System One endpoint.' : 'Using System One at TypeSafe.');
+    // System One is preferred: it returns calibrated typed answers. The chat adapter is a supported fallback.
+    if (config.provider?.type === 'openai-compatible') add('provider', 'unknown', 'CHAT_FALLBACK_PROVIDER',
+      'Using the OpenAI-compatible fallback. System One is recommended for calibrated probabilities; review previews and thresholds before archive mode.');
+    else add('provider', 'pass', 'SYSTEM_ONE_PROVIDER', 'Using System One (recommended).');
   }
   catch (error: any) {
     add('config', 'blocked', error.code === 'ENOENT' ? 'CONFIG_MISSING' : 'CONFIG_INVALID',

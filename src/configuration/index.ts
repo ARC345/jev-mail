@@ -13,11 +13,13 @@ export interface CategoryConfig {
   archive: boolean;
 }
 
-export type ProviderType = 'system-one';
+export type ProviderType = 'system-one' | 'openai-compatible';
+export type ResponseFormat = 'json_schema' | 'json_object' | 'none';
 
 /**
- * Model backend. Absent means System One at TypeSafe. `system-one` with a
- * `baseUrl` targets any System One-compatible endpoint (gateway, self-hosted).
+ * Model backend. Absent means System One at TypeSafe (recommended). `system-one`
+ * may point at any System One-compatible endpoint. `openai-compatible` is a
+ * fallback speaking the Chat Completions API: OpenRouter, a LiteLLM proxy, etc.
  * Everything here is uploaded to GAS as plain configuration, so it must not
  * contain secrets; the API key is stored separately in Script Properties.
  */
@@ -25,6 +27,7 @@ export interface ProviderConfig {
   type: ProviderType;
   baseUrl?: string;
   headers?: Record<string, string>;
+  responseFormat?: ResponseFormat;
 }
 
 export interface JevMailConfig {
@@ -191,10 +194,15 @@ const FORBIDDEN_HEADERS = new Set(['authorization', 'content-type', 'content-len
 function validateProvider(value: unknown): ProviderConfig | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) throw new Error('config.provider: expected an object');
-  assertExactKeys(value, ['type', 'baseUrl', 'headers'], 'config.provider');
-  if (value.type !== 'system-one') throw new Error('config.provider.type: expected "system-one"');
+  assertExactKeys(value, ['type', 'baseUrl', 'headers', 'responseFormat'], 'config.provider');
+  if (value.type !== 'system-one' && value.type !== 'openai-compatible') {
+    throw new Error('config.provider.type: expected "system-one" or "openai-compatible"');
+  }
   const provider: ProviderConfig = { type: value.type };
-  if (value.baseUrl !== undefined) {
+  if (value.type === 'system-one' && value.responseFormat !== undefined) {
+    throw new Error('config.provider.responseFormat: only supported for openai-compatible providers');
+  }
+  if (value.baseUrl !== undefined || value.type === 'openai-compatible') {
     assertSafeString(value.baseUrl, 'config.provider.baseUrl');
     let url: URL;
     try { url = new URL(value.baseUrl); } catch { throw new Error('config.provider.baseUrl: expected an absolute URL'); }
@@ -216,6 +224,12 @@ function validateProvider(value: unknown): ProviderConfig | undefined {
       headers[name] = header;
     }
     provider.headers = headers;
+  }
+  if (value.responseFormat !== undefined) {
+    if (!['json_schema', 'json_object', 'none'].includes(value.responseFormat as string)) {
+      throw new Error('config.provider.responseFormat: expected "json_schema", "json_object", or "none"');
+    }
+    provider.responseFormat = value.responseFormat as ResponseFormat;
   }
   return provider;
 }
